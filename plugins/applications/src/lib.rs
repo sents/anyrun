@@ -53,8 +53,11 @@ pub fn handler(selection: Match, state: &State) -> HandleResult {
             }
         })
         .unwrap();
-    let (command, argv) = lower_exec(&entry.exec).unwrap_or_else(
-        |e| panic!("Unable to parse the exec key `{}`: {}", &entry.exec, e.0)
+    let (command, argv) = lower_exec(&entry.exec).unwrap_or_else( |e|
+        {
+            eprintln!("Unable to parse the exec key `{}`: {}", &entry.exec, e.0);
+            std::process::exit(1);
+        }
     );
 
     let exec = if let Some(script) = &state.config.preprocess_exec_script {
