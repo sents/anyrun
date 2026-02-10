@@ -101,6 +101,151 @@ fn substitute_escapes(s: &str) -> Result<String, ExecKeyError> {
     Ok(out.into_iter().collect())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn substitute_some_escapes() {
+        match substitute_escapes(
+            "Testing: space (\\s), newline (\\n), tab (\\t), carriage return (\\r) and backslash (\\\\)"
+        ) {
+            Ok(result) => assert_eq!(
+                result,
+                "Testing: space ( ), newline (\n), tab (\t), carriage return (\r) and backslash (\\)"
+            ),
+            Err(reason) => panic!("Substitution of valid string failed! {}", reason.0)
+        }
+    }
+
+    #[test]
+    fn substitute_invalid_escape() {
+        match substitute_escapes("Testing invalid escape \\q") {
+            Err(reason) => assert_eq!("Escaping invalid character q at position 24", reason.0),
+            Ok(_) => panic!("Substitution of invalid escape suceeded!")
+        }
+    }
+
+    #[test]
+    fn substitute_dangling_escape() {
+        match substitute_escapes("Testing dangling escape \\") {
+            Err(reason) => assert_eq!("Dangling escape", reason.0),
+            Ok(_) => panic!("Substitution of invalid escape suceeded!")
+        }
+    }
+
+    #[test]
+    fn unescape_unquoted_exec() {
+        match unescape_exec("this is unquoted") {
+            Ok(result) => assert_eq!(result, ["this", "is", "unquoted"]),
+            Err(reason) => panic!("Unescaping unquoted exec key failed! {}", reason.0)
+        }
+    }
+
+    #[test]
+    fn unescape_quoted_exec() {
+        match unescape_exec(
+            concat!(
+                r#"Escaped chars: "#,
+                r#""double Quote \"" "#,
+                r#""backtick \`" "#,
+                r#""dollar \$" "#,
+                r#""backslash \\" "#,
+                "\"Reserved chars like \t\n\\\"'\\\\><~|&;\\$*?#()\\` necessitate a quoted string\" "
+            )
+        ) {
+            Ok(result) => assert_eq!(
+                result,
+                [
+                    "Escaped",
+                    "chars:",
+                    "double Quote \"",
+                    "backtick `",
+                    "dollar $",
+                    "backslash \\",
+                    "Reserved chars like \t\n\"'\\><~|&;$*?#()` necessitate a quoted string"
+                ]
+            ),
+            Err(result) => panic!("Unescaping unquoted exec key failed! {}", result.0)
+        }
+    }
+
+    fn make_test_entry() -> DesktopEntry {
+        DesktopEntry {
+            exec: r#"/usr/bin/testdummy "some\smore \\$\\\\" args %i"#.to_owned(),
+            path: None,
+            name: "TestDummy".to_owned(),
+            localized_name: Some("TestPuppe".to_owned()),
+            keywords: [].to_vec(),
+            localized_keywords: None,
+            desc: None,
+            icon: "SomeIconString".to_owned(),
+            term: true,
+            offset: 0,
+            is_action: false
+        }
+    }
+
+    #[test]
+    fn expand_icon_fieldcode () {
+        let test_entry = make_test_entry();
+
+        match expand_exec_fieldcodes(&test_entry, "%i".to_string()) {
+            Ok(result) => assert_eq!(result, "--icon SomeIconString"),
+            Err(error) => panic!("Expanding icon fieldcode failed! {}", error.0)
+        }
+    }
+
+    #[test]
+    fn expand_icon_fieldcode_nonstandalone () {
+        let test_entry = make_test_entry();
+        let arg = "%i-testing";
+
+        match expand_exec_fieldcodes(&test_entry, "%i-testing".to_string()) {
+            Ok(_) => panic!("Expected error on non standalone icon fieldcode!"),
+            Err(error) => assert_eq!(
+                error.0,
+                format!("Encountered field code %i in argument {} with other contents, %i must stand alone.", arg))
+        }
+    }
+
+    #[test]
+    fn expand_localized_name_fieldcode () {
+        let test_entry = make_test_entry();
+
+        match expand_exec_fieldcodes(&test_entry, "%c-testing".to_string()) {
+            Ok(result) => assert_eq!(result, "TestPuppe-testing"),
+            Err(error) => panic!("Expanding localized name fieldcode failed! {}", error.0)
+        }
+    }
+
+    #[test]
+    fn expand_unknown_fieldcode () {
+        let test_entry = make_test_entry();
+
+        match expand_exec_fieldcodes(&test_entry, "%q".to_string()) {
+            Ok(_) => panic!("Expected error on unknown fieldcode!"),
+            Err(error) => assert_eq!(error.0, "Argument %q contains unknown field code %q.")
+        }
+    }
+
+    #[test]
+    fn lower_exec_key () {
+        let test_entry = make_test_entry();
+
+        match lower_exec(&test_entry) {
+            Ok(result) => assert_eq!(
+                result,
+                ("/usr/bin/testdummy".to_owned(), [r#"some more $\"#, "args", "--icon SomeIconString" ]
+                 .into_iter().map(|s| s.to_owned()).collect())
+            ),
+            Err(error) => panic!("Lowering exec key failed! {}", error.0)
+        }
+    }
+}
+
+
+
 #[derive(Debug, Clone)]
 enum ExecKeyState {
     Waiting,
