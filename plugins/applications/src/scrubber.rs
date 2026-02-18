@@ -352,10 +352,15 @@ fn get_fieldcode(code: char, entry: &DesktopEntry, arg: &str) -> Result<String, 
                 return Err(
                     ExecKeyError(
                         format!(
-                            "Encountered field code %i in argument {} with other other contents, %i must stand alone.", arg)
+                            "Encountered field code %i in argument {} with other contents, %i must stand alone.", arg)
                     ))
             }
-            format!("--icon {}", entry.icon.clone())
+            let icon = entry.icon.clone();
+            if icon.is_empty() {
+                "".to_owned()
+            } else {
+                format!("--icon {}", entry.icon.clone())
+            }
         },
         c => panic!("Function called with unimplemented field code {}!", c)
     };
@@ -430,7 +435,7 @@ pub(crate) fn lower_exec(entry: &DesktopEntry) -> Result<(String, Vec<String>), 
             .into_iter()
             .map(|arg| expand_exec_fieldcodes(&entry, arg.clone()))
             .collect::<Result<Vec<_>,_>>()?;
-        let argv_stripped = argv_fieldcodes.into_iter().filter(|arg| arg.is_empty()).collect();
+        let argv_stripped = argv_fieldcodes.into_iter().filter(|arg| !arg.is_empty()).collect();
         return Ok((command.clone(), argv_stripped));
     } else {
         return Err(ExecKeyError("Empty exec key!".to_string()));
